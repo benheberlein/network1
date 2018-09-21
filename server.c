@@ -83,9 +83,9 @@ void get(msg_t *rec) {
     d.data[0] = 0;
 
     /* Create done packet */
-    d.oper = OPER_GET;
-    d.func = GET_DONE;  
-    d.data[0] = 0;
+    done.oper = OPER_GET;
+    done.func = GET_DONE;  
+    done.data[0] = 0;
 
     while(1) { 
 
@@ -112,10 +112,12 @@ void get(msg_t *rec) {
             file_len = ftell(f);
             fseek(f, 0, SEEK_SET);
            
-            /* Load file */ 
-            fbuf = malloc(file_len);
+            /* Load file (round up to a frame) */ 
+            fbuf = malloc(file_len - (file_len % FRAME_SIZE) + FRAME_SIZE);
             fread(fbuf, file_len, 1, f);
             fclose(f);
+
+            printf("data is %s\n", fbuf);
 
             /* Calculate number of packets */
             num_dpkt = (file_len + (FRAME_SIZE - 1)) / FRAME_SIZE;
@@ -139,6 +141,7 @@ void get(msg_t *rec) {
         /* Request for missing packet */
         if (rec->oper == OPER_GET  && rec->func == GET_DATA) {
             curr_dpkt = rec->data[0] << 8 | rec->data[1] << 0;
+            printf("packet is %d\n", curr_dpkt);
 
             /* Send next ten packets */
             for (int i = curr_dpkt; i < curr_dpkt + 10; i++) {
@@ -160,6 +163,9 @@ void get(msg_t *rec) {
             if (ret < 0) {
                 warn("Done response failure in GET");
             }
+
+            /* Can break out of loop since another GET DONE from client puts us back in loop */
+            break;
         }
 
         /* Get packet from client */

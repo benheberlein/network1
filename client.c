@@ -63,6 +63,7 @@ void get(char *file) {
     msg_t init;
     msg_t rec;
     msg_t d;
+    msg_t done;
     int ret = 0;
     int serv_len = 0;
     int file_len = 0;
@@ -82,6 +83,11 @@ void get(char *file) {
     d.func = GET_DATA;
     d.data[0] = 0;
     d.data[1] = 0;
+
+    /* Create done packet */
+    done.oper = OPER_GET;
+    done.func = GET_DONE;
+    done.data[0] = 0;
 
     /* Send init packet and wait for response */
     while (1) {
@@ -103,17 +109,19 @@ void get(char *file) {
         break;
     }
 
-    /* Creates data buffer */
-    fbuf = malloc(file_len);
+    /* Creates data buffer (round up to a frame) */
+    fbuf = (char *) malloc(file_len - (file_len % FRAME_SIZE) + FRAME_SIZE);
+    if (fbuf == NULL) {
+        error("Could not make memory for file");
+    }
 
     /* Calculate total number of packets */
     num_dpkt = (file_len + (FRAME_SIZE - 1)) / FRAME_SIZE;    
 
-
     /* Data gathering loop */
     while(1) {
         /* Request packet */
-        printf("Requesting pkt %d", curr_dpkt);
+        printf("Requesting pkt %d\n", curr_dpkt);
         d.data[0] = curr_dpkt >> 8;
         d.data[1] = curr_dpkt >> 0;
         ret = sendto(sock, &d, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
@@ -121,7 +129,6 @@ void get(char *file) {
             warn("Data packet failure");
         }
 
-        printf("Recieving...\n");
         /* Recieve packet */
         ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
         if (ret < 0) {
@@ -129,16 +136,20 @@ void get(char *file) {
             continue;
         }
 
-        printf("Decoding...");
+        if (rec.oper != OPER_GET || rec.func != GET_DATA) {
+            printf("Recieved invalid packet\n");
+            continue;
+        }
+
         /* Decode packet ID */
         pkt_id = rec.data[0] << 8 | rec.data[1] << 0;
+        printf("Pkt ID is %d\n", pkt_id);
         if (pkt_id < curr_dpkt) {
             continue;
         }
 
-        printf("breaking...");
         /* copy into buffer and mark current packet TODO make smarter, keep track of recieved*/
-        memcpy(fbuf + FRAME_SIZE*pkt_id, d.data + 2, FRAME_SIZE);
+        memcpy(fbuf + FRAME_SIZE*pkt_id, rec.data + 2, FRAME_SIZE);
         if (pkt_id == curr_dpkt) {
             curr_dpkt++;
         }
@@ -148,16 +159,35 @@ void get(char *file) {
         }
     }
 
-#if 0
+    printf("data is %s\n", fbuf);
 
     /* Save file */
-    f = fopen(file, "w");
+    f = fopen("rec.txt", "wb");
     fwrite(fbuf, 1, file_len, f);
     fclose(f);
     free(fbuf);
 
-#endif
     /* Send done */
+    while(1) {
+        ret = sendto(sock, &done, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
+        if (ret < 0) {
+            warn("Done packet failure");
+            continue;
+        }
+
+        /* Recieve done ack packet */
+        ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
+        if (ret < 0) {
+            warn("Didn't recieve done ack");
+            continue;
+        }
+
+        if (rec.oper == OPER_GET && rec.func == GET_DONE) {
+            printf("Completed get operation\n");
+            break;
+        }
+
+    }
 }
 
 int main(int argc, char **argv) {
@@ -243,6 +273,8 @@ int main(int argc, char **argv) {
             continue;
         }
         
+        printf("Completed command\n");
+
     }   
 
     return 0;
