@@ -94,7 +94,7 @@ void get(char *file) {
         serv_len = sizeof(serv_addr);
         ret = sendto(sock, &init, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
         if (ret < 0) {
-            warn("Init packet failure");
+            warn("Init packet failure in GET");
             continue;
         }
         ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
@@ -190,6 +190,79 @@ void get(char *file) {
     }
 }
 
+void put(char *file) {
+
+}
+
+void del(char *file) {
+    msg_t init;
+    msg_t done;
+    msg_t rec;
+    int serv_len = 0;
+    int ret = 0;
+
+    /* Create init packet */
+    init.oper = OPER_DEL;
+    init.func = DEL_INIT;
+    strcpy(init.data, file);
+
+    /* Create done packet */
+    done.oper = OPER_DEL;
+    done.func = DEL_DONE;
+    done.data[0] = 0;
+
+    /* Send init packet and wait for response */
+    while (1) {
+        serv_len = sizeof(serv_addr);
+        ret = sendto(sock, &init, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
+        if (ret < 0) {
+            warn("Init packet failure in DEL");
+            continue;
+        }
+        ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
+        if (ret < 0) {
+            warn("No init packet from server, retransmitting");
+            continue;
+        }
+
+        break;
+    }
+
+    /* Send done */
+    while(1) {
+        ret = sendto(sock, &done, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
+        if (ret < 0) {
+            warn("Done packet failure");
+            continue;
+        }
+
+        /* Recieve done ack packet */
+        ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
+        if (ret < 0) {
+            warn("Didn't recieve done ack");
+            continue;
+        }
+
+        if (rec.oper == OPER_GET && rec.func == GET_DONE) {
+            if (rec.data[0] == 0) {
+                printf("Delete operation failed\n");
+            } else {
+                printf("Successfully deleted\n");
+            }
+            break;
+        }
+
+    }
+}
+
+void ls() {
+
+}
+
+void ex() {
+
+}
+
 int main(int argc, char **argv) {
     int serv_port = 0;
     char *serv_host;
@@ -257,6 +330,7 @@ int main(int argc, char **argv) {
                 continue;
             }
             printf("Sending 'put' command with file %s\n", user_arg);
+            put(user_arg);
         } else if (strcmp("del", user_oper) == 0) {
             user_arg = strtok(NULL, " \n\t\r");
             if (user_arg == NULL) {
@@ -264,10 +338,13 @@ int main(int argc, char **argv) {
                 continue;
             }
             printf("Sending 'del' command with file %s\n", user_arg);
+            del(user_arg);
         } else if (strcmp("ls", user_oper) == 0) {
             printf("Sending 'ls' command\n");
+            ls();
         } else if (strcmp("exit", user_oper) == 0) {
             printf("Sending 'exit' command\n");
+            ex();
         } else {
             printf("Invalid option. Options are:\n\tget\n\tput\n\tdel\n\tls\n\texit\n");
             continue;

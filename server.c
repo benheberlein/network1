@@ -75,7 +75,7 @@ void get(msg_t *rec) {
     /* Create init response */
     init.oper = OPER_GET;
     init.func = GET_INIT;
-    d.data[0] = 0;
+    init.data[0] = 0;
 
     /* Create data response */
     d.oper = OPER_GET;
@@ -176,6 +176,85 @@ void get(msg_t *rec) {
     }
 }
 
+void put(msg_t *rec) {
+
+}
+
+void del(msg_t *rec) {
+    msg_t init;
+    msg_t done;
+    char file_name[64];
+    int success = 0;
+    int ret = 0;
+    FILE *f;
+
+    /* Create init response */
+    init.oper = OPER_DEL;
+    init.func = DEL_INIT;
+    init.data[0] = 0;
+
+    /* Create done packet */
+    done.oper = OPER_GET;
+    done.func = GET_DONE;
+    done.data[0] = 0;
+
+    while(1) {
+        
+        /* Send init response */
+        if (rec->oper == OPER_DEL && rec->func == GET_INIT) {
+            printf("Filename is %s\n", rec->data);
+            strcpy(file_name, rec->data);
+
+            /* Send init response */
+            ret = sendto(sock, &init, MSG_SIZE, 0, (struct sockaddr *) &client_addr, sizeof(client_addr));
+            if (ret < 0) {
+                warn("Init response failure in DEL");
+                continue;
+            }
+
+            /* Try to delete file, set success (default 0) */
+            f = fopen(file_name, "rb");   
+            if (f != NULL) {
+                fclose(f);
+                remove(file_name);
+                f = fopen(file_name, "rb");
+                if (f == NULL) {
+                    success = 1;
+                } else {
+                    fclose(f);
+                }
+            }
+        }    
+
+        /* Send done with success value */
+        if (rec->oper == OPER_DEL && rec->func == DEL_DONE) {
+            done.data[0] = success;
+            ret = sendto(sock, &done, MSG_SIZE, 0, (struct sockaddr *) &client_addr, sizeof(client_addr));
+
+            if (ret < 0) {
+                warn("Done response failure in DEL");
+            }
+
+            /* Can break out of loop since another GET DONE from client puts us back in loop */
+            break;
+        }
+
+        /* Get packet from client */
+        ret = recvfrom(sock, rec, MSG_SIZE, 0 , (struct sockaddr *) &client_addr, &client_len);
+        if (ret < 0) {
+            warn("Recieve failure in DEL");
+        }
+    } 
+}
+
+void ls(msg_t *rec) {
+
+}
+
+void ex(msg_t *rec) {
+
+}
+
 int main(int argc, char **argv) {
     int serv_port = 0;
     int optval = 0; 
@@ -232,6 +311,18 @@ int main(int argc, char **argv) {
         switch(rec.oper) {
             case OPER_GET:
                 get(&rec);
+                break;
+            case OPER_PUT:
+                put(&rec);
+                break;
+            case OPER_DEL:
+                del(&rec);
+                break;
+            case OPER_LS:
+                ls(&rec);
+                break;
+            case OPER_EXIT:
+                ex(&rec);
                 break;
             default:
                 warn("Recieved packet with invalid operation\n");
