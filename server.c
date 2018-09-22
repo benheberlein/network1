@@ -201,7 +201,7 @@ void del(msg_t *rec) {
     while(1) {
         
         /* Send init response */
-        if (rec->oper == OPER_DEL && rec->func == GET_INIT) {
+        if (rec->oper == OPER_DEL && rec->func == DEL_INIT) {
             printf("Filename is %s\n", rec->data);
             strcpy(file_name, rec->data);
 
@@ -252,7 +252,48 @@ void ls(msg_t *rec) {
 }
 
 void ex(msg_t *rec) {
+    msg_t init;
+    int ret;
+    
+    /* Create init response */
+    init.oper = OPER_EXIT;
+    init.func = EXIT_INIT;
+    init.data[0] = 0;
 
+    while(1) {
+
+        /* Send init response */
+        if (rec->oper == OPER_EXIT && rec->func == EXIT_INIT) {
+            printf("Shutting down server...\n");
+
+            /* Send init response multiple times since we are shutting down */
+            for (int i = 0; i < 10; i++) {
+                ret = sendto(sock, &init, MSG_SIZE, 0, (struct sockaddr *) &client_addr, sizeof(client_addr));
+                if (ret < 0) {
+                    warn("Init response failure in DEL");
+                    continue;
+                }
+            }
+
+            /* Shutdown socket and exit */
+            ret = close(sock);
+            if (ret < 0) {
+                warn("Couldn't shut down socket");
+                printf("Forcefully quitting - Goodbye!\n");
+                exit(0);
+            } else {
+                printf("Successfully shut down socket\n");
+                printf("Goodbye!\n");
+                exit(0);
+            }
+        }
+
+        /* Get packet from client */
+        ret = recvfrom(sock, rec, MSG_SIZE, 0 , (struct sockaddr *) &client_addr, &client_len);
+        if (ret < 0) {
+            warn("Recieve failure in EXIT");
+        }
+    }
 }
 
 int main(int argc, char **argv) {

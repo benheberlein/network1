@@ -260,7 +260,39 @@ void ls() {
 }
 
 void ex() {
+    msg_t init;
+    msg_t rec;
+    int count = 0;
+    int ret = 0;
+    int serv_len = 0; 
 
+    /* Create init packet */
+    init.oper = OPER_EXIT;
+    init.func = EXIT_INIT;
+
+    /* Send init packet and wait for response (try 5 times since there's no done) */
+    while (count < 5) {
+        count++;
+        serv_len = sizeof(serv_addr);
+        ret = sendto(sock, &init, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
+        if (ret < 0) {
+            warn("Init packet failure in EXIT");
+            continue;
+        }
+        ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
+        if (ret < 0) {
+            warn("No init packet from server, retransmitting");
+            continue;
+        }
+
+        break;
+    }
+
+    if (count == 5) {
+        printf("Exit operation timed out\n");
+    } else {
+        printf("Server successfully shut down\n");
+    }
 }
 
 int main(int argc, char **argv) {
