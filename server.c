@@ -276,6 +276,8 @@ void ls(msg_t *rec) {
 
         /* Send init response  with file size */
         if (rec->oper == OPER_LS  && rec->func == LS_INIT) {
+            printf("Received LS init\n");            
+
             /* Send init response */
             ret = sendto(sock, &init, MSG_SIZE, 0, (struct sockaddr *) &client_addr, sizeof(client_addr));
             if (ret < 0) {
@@ -298,6 +300,7 @@ void ls(msg_t *rec) {
                 strcat(lsbuf, de->d_name);
                 strcat(lsbuf, "\n");
             }
+
             memcpy(d.data, lsbuf, DATA_SIZE);
 
             /* Send data packet */
@@ -429,19 +432,15 @@ int main(int argc, char **argv) {
                 get(&rec);
                 break;
             case OPER_PUT:
-                get(&rec);
                 put(&rec);
                 break;
             case OPER_DEL:
-                get(&rec);
                 del(&rec);
                 break;
             case OPER_LS:
-                get(&rec);
                 ls(&rec);
                 break;
             case OPER_EXIT:
-                get(&rec);
                 ex(&rec);
                 break;
             default:

@@ -307,8 +307,10 @@ void ls() {
             continue;
         }
 
-        printf("Received contents of ls:\n%s\n", rec.data);
-        break;
+        if (rec.oper == OPER_LS && rec.func == LS_DATA) {
+            printf("Received contents of ls:\n%s\n", rec.data);
+            break;
+        }
     }
 
     /* Send done */
@@ -455,9 +457,6 @@ int main(int argc, char **argv) {
             printf("Invalid option. Options are:\n\tget\n\tput\n\tdel\n\tls\n\texit\n");
             continue;
         }
-        
-        printf("Completed command\n");
-
     }   
 
     return 0;
