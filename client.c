@@ -186,7 +186,6 @@ void get(char *file) {
             printf("Completed get operation\n");
             break;
         }
-
     }
 }
 
@@ -256,7 +255,82 @@ void del(char *file) {
 }
 
 void ls() {
+    msg_t init;
+    msg_t done;
+    msg_t d;
+    msg_t rec;
+    int serv_len = 0;
+    int ret = 0;
 
+    /* Create init packet */
+    init.oper = OPER_LS;
+    init.func = LS_INIT;
+    init.data[0] = 0;
+
+    /* Create data request packet */
+    d.oper = OPER_LS;
+    d.func = LS_DATA;
+    d.data[0] = 0;
+
+    /* Create done packet */
+    done.oper = OPER_LS;
+    done.func = LS_DONE;
+    done.data[0] = 0;
+
+    /* Send init packet and wait for response */
+    while (1) {
+        serv_len = sizeof(serv_addr);
+        ret = sendto(sock, &init, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
+        if (ret < 0) {
+            warn("Init packet failure in LS");
+            continue;
+        }
+        ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
+        if (ret < 0) {
+            warn("No init packet from server, retransmitting");
+            continue;
+        }
+
+        break;
+    }
+
+    /* Send data request and wait for data */
+    while (1) {
+        ret = sendto(sock, &d, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
+        if (ret < 0) {
+            warn("Data packet failture in LS");
+            continue;
+        }
+        ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
+        if (ret < 0) {
+            warn("No data packet from server, retransmitting request");
+            continue;
+        }
+
+        printf("Received contents of ls:\n%s\n", rec.data);
+        break;
+    }
+
+    /* Send done */
+    while(1) {
+        ret = sendto(sock, &done, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
+        if (ret < 0) {
+            warn("Done packet failure");
+            continue;
+        }
+
+        /* Recieve done ack packet */
+        ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
+        if (ret < 0) {
+            warn("Didn't recieve done ack");
+            continue;
+        }
+
+        if (rec.oper == OPER_LS && rec.func == LS_DONE) {
+            printf("Completed ls operation\n");
+            break;
+        }
+    }
 }
 
 void ex() {

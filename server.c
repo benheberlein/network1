@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <dirent.h>
 #include <string.h>
 #include <netdb.h>
 #include <sys/types.h> 
@@ -248,7 +249,81 @@ void del(msg_t *rec) {
 }
 
 void ls(msg_t *rec) {
+    msg_t init;
+    msg_t d;
+    msg_t done;
+    int ret = 0;
+    char lsbuf[DATA_SIZE];
+    struct dirent *de;
+    DIR *dr; 
 
+    /* Create init response */
+    init.oper = OPER_LS;
+    init.func = LS_INIT;
+    init.data[0] = 0;
+
+    /* Create data response */
+    d.oper = OPER_LS;
+    d.func = LS_DATA;
+    d.data[0] = 0;
+
+    /* Create done packet */
+    done.oper = OPER_LS;
+    done.func = LS_DONE;
+    done.data[0] = 0;
+
+    while(1) {
+
+        /* Send init response  with file size */
+        if (rec->oper == OPER_LS  && rec->func == LS_INIT) {
+            /* Send init response */
+            ret = sendto(sock, &init, MSG_SIZE, 0, (struct sockaddr *) &client_addr, sizeof(client_addr));
+            if (ret < 0) {
+                warn("Init response failure in GET");
+                continue;
+            }
+        }
+
+        /* Data packet */
+        if (rec->oper == OPER_LS && rec->func == LS_DATA) {
+            
+            /* Put contents of directory into buffer */
+            lsbuf[0] = 0;
+            dr = opendir(".");
+            if (dr == NULL) {
+                warn("Could not open directory");
+                continue;
+            }
+            while((de = readdir(dr)) != NULL) {
+                strcat(lsbuf, de->d_name);
+                strcat(lsbuf, "\n");
+            }
+            memcpy(d.data, lsbuf, DATA_SIZE);
+
+            /* Send data packet */
+            ret = sendto(sock, &d, MSG_SIZE, 0, (struct sockaddr *) &client_addr, sizeof(client_addr));
+            if (ret < 0) {
+                warn("Data response failure in LS");
+            }
+        }
+
+        /* Done handshake */
+        if  (rec->oper == OPER_LS && rec->func == LS_DONE) {
+            ret = sendto(sock, &done, MSG_SIZE, 0, (struct sockaddr *) &client_addr, sizeof(client_addr));
+            if (ret < 0) {
+                    warn("Done response failure in LS");
+            }
+
+            /* Can break out of loop since another GET DONE from client puts us back in loop */
+            break;
+        }
+
+        /* Get packet from client */
+        ret = recvfrom(sock, rec, MSG_SIZE, 0 , (struct sockaddr *) &client_addr, &client_len);
+        if (ret < 0) {
+            warn("Recieve failure in LS");
+        }
+    }
 }
 
 void ex(msg_t *rec) {
@@ -354,19 +429,23 @@ int main(int argc, char **argv) {
                 get(&rec);
                 break;
             case OPER_PUT:
+                get(&rec);
                 put(&rec);
                 break;
             case OPER_DEL:
+                get(&rec);
                 del(&rec);
                 break;
             case OPER_LS:
+                get(&rec);
                 ls(&rec);
                 break;
             case OPER_EXIT:
+                get(&rec);
                 ex(&rec);
                 break;
             default:
-                warn("Recieved packet with invalid operation\n");
+                warn("Received packet with invalid operation\n");
                 break;
         }
     }
