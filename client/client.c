@@ -327,7 +327,7 @@ void put(char *file) {
         }
 
         if (rec.oper == OPER_PUT && rec.func == PUT_DONE) {
-            printf("Completed get operation\n");
+            printf("Completed put operation\n");
             break;
         }
     }
