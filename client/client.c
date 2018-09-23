@@ -162,7 +162,7 @@ void get(char *file) {
     printf("data is %s\n", fbuf);
 
     /* Save file */
-    f = fopen("rec.txt", "wb");
+    f = fopen(file, "wb");
     fwrite(fbuf, 1, file_len, f);
     fclose(f);
     free(fbuf);
@@ -190,6 +190,154 @@ void get(char *file) {
 }
 
 void put(char *file) {
+    msg_t init;
+    msg_t done;
+    msg_t rec;
+    msg_t d;
+    FILE *f;
+    char *fbuf;
+    int num_dpkt = 0;
+    int curr_dpkt = 0;
+    int file_len = 0;
+    int ret = 0;   
+    int serv_len = 0;
+    int pkt_id = 0;
+ 
+    /* Create init response */
+    init.oper = OPER_PUT;
+    init.func = PUT_INIT;
+    init.data[0] = 0;
+
+    /* Create data response */
+    d.oper = OPER_PUT;
+    d.func = PUT_DATA;
+    d.data[0] = 0;
+
+    /* Create done packet */
+    done.oper = OPER_PUT;
+    done.func = PUT_DONE;
+    done.data[0] = 0;
+
+    /* Open file buffer */
+    f = fopen(file, "r");
+    if (f == NULL) {
+        warn("Couldn't open file");
+        return;
+    }
+
+    /* Get file size */
+    fseek(f, 0, SEEK_END);
+    file_len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+
+    /* Load file (round up to a frame) */
+    fbuf = malloc(file_len - (file_len % FRAME_SIZE) + FRAME_SIZE);
+    fread(fbuf, file_len, 1, f);
+    fclose(f);
+
+    /* Calculate number of packets */
+    num_dpkt = (file_len + (FRAME_SIZE - 1)) / FRAME_SIZE;
+    curr_dpkt = 0;
+
+    /* Set file size */
+    init.data[0] = file_len >> 24;
+    init.data[1] = file_len >> 16;
+    init.data[2] = file_len >> 8;
+    init.data[3] = file_len >> 0;
+
+    /* Set file name for server */
+    strcpy(init.data+4, file);
+
+    /* Send init packet and wait for response */
+    while (1) {
+        serv_len = sizeof(serv_addr);
+        ret = sendto(sock, &init, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
+        if (ret < 0) {
+            warn("Init packet failure in PUT");
+            continue;
+        }
+        ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
+        if (ret < 0) {
+            warn("No init packet from server, retransmitting");
+            continue;
+        }
+
+        if (rec.oper == OPER_PUT && rec.func == PUT_INIT) {
+            if (rec.data[0] == 1) {
+                break;
+            } else {
+                printf("Could not open server file for write\n");
+                return;
+            }
+        }
+    }
+
+    while(1) {
+
+        /* Send packets and wait for server status */
+        for (int i = curr_dpkt; i < curr_dpkt + 2; i++) {
+            printf("i is %d\n", i);
+            if (i < num_dpkt) {
+                d.data[0] = i >> 8;
+                d.data[1] = i >> 0;
+                printf("d0, d1 are %d, %d\n", d.data[0], d.data[1]);
+                memcpy(d.data + 2, fbuf + FRAME_SIZE*i, FRAME_SIZE);
+                printf("Sending packet with id %d, curr_dpkt is %d, num_dpkt is  %d\n", i, curr_dpkt, num_dpkt);
+                ret = sendto(sock, &d, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
+                if (ret < 0) {
+                    warn("Data response failure in PUT");
+                }
+            }
+        }
+ 
+        /* Try to receieve a packet and set current packet or send done*/
+        ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
+        if (ret < 0) {
+            warn("No data packet from server");
+            continue;
+        }
+
+        if  (rec.oper != OPER_PUT || rec.func != PUT_DATA) {
+            printf("Received invalid packet\n");
+            continue;
+        }
+
+        /* Decode packet ID */
+        pkt_id = rec.data[0] << 8 | rec.data[1] << 0;
+        printf("Pkt ID is %d\n", pkt_id);
+    
+        /* Server has all packets */
+        if (pkt_id >= num_dpkt) {
+            break;
+        }
+
+        /* Server needs a packet */
+        if (pkt_id < num_dpkt) {
+            curr_dpkt = pkt_id;
+            printf("Set curr_dpkt to %d\n", curr_dpkt);
+        } 
+    }
+
+    /* Send done and wait for server to agree */
+    while(1) {
+        ret = sendto(sock, &done, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
+        if (ret < 0) {
+            warn("Done packet failure");
+            continue;
+        }
+
+        /* Recieve done ack packet */
+        ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
+        if (ret < 0) {
+            warn("Didn't recieve done ack");
+            continue;
+        }
+
+        if (rec.oper == OPER_PUT && rec.func == PUT_DONE) {
+            printf("Completed get operation\n");
+            break;
+        }
+    }
 
 }
 
@@ -408,18 +556,17 @@ int main(int argc, char **argv) {
         error("Invalid host address\n");
     }
 
-    /* Send test msg */
-#if 0
-    char buf[32] = "hello world\n";
-    while (1) {
-        printf("Sending message\n");
-        sendto(sock, buf, 32, 0, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
-        buf[0] = buf[0]+1;
-    }
-#endif
     /* Get operation from user */
     while (1) {
         fgets(user_temp, 32, stdin);
+        
+        /* Prevent empty input */
+        if (strcmp("\n", user_temp) == 0) {
+            printf("Invalid option. Options are:\n\tget\n\tput\n\tdel\n\tls\n\texit\n");
+            continue;
+        }
+        
+        /* Strip off first word */
         user_oper = strtok(user_temp, " \n\t\r");
 
         /* Select appropriate operation or send invalid message*/
