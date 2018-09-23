@@ -142,8 +142,8 @@ void get(msg_t *rec) {
             curr_dpkt = rec->data[0] << 8 | rec->data[1] << 0;
             printf("Pkt ID is %d\n", curr_dpkt);
 
-            /* Send next ten packets */
-            for (int i = curr_dpkt; i < curr_dpkt + 1; i++) {
+            /* Send next 5000 packets */
+            for (int i = curr_dpkt; i < curr_dpkt + 5000; i++) {
                 if (i < num_dpkt) {
                     d.data[0] = i >> 8;
                     d.data[1] = i >> 0;

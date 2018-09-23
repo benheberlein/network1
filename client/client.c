@@ -72,6 +72,8 @@ void get(char *file) {
     int curr_dpkt = 0;
     int pkt_id = 0;
     int num_dpkt = 0;
+    int cnt = 0;
+    char * pkt_arr;
 	
     /* Create init packet */
     init.oper = OPER_GET;
@@ -118,20 +120,30 @@ void get(char *file) {
     /* Calculate total number of packets */
     num_dpkt = (file_len + (FRAME_SIZE - 1)) / FRAME_SIZE;    
 
+    /* Array to keep track of packets */
+    pkt_arr = calloc(num_dpkt+1, sizeof(char));
+
     /* Data gathering loop */
     while(1) {
         /* Request packet */
-        d.data[0] = curr_dpkt >> 8;
+        /*d.data[0] = curr_dpkt >> 8;
         d.data[1] = curr_dpkt >> 0;
         ret = sendto(sock, &d, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
         if (ret < 0) {
             warn("Data packet failure");
-        }
+        } */
 
         /* Recieve packet */
         ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
         if (ret < 0) {
-            warn("Data packet failure");
+            /* Request packet */
+            d.data[0] = curr_dpkt >> 8;
+            d.data[1] = curr_dpkt >> 0;
+            ret = sendto(sock, &d, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
+            if (ret < 0) {
+                warn("Data packet failure");
+            }
+
             continue;
         }
 
@@ -142,18 +154,31 @@ void get(char *file) {
 
         /* Decode packet ID */
         pkt_id = rec.data[0] << 8 | rec.data[1] << 0;
-        printf("Pkt ID is %d\n", pkt_id);
+        //printf("Pkt ID is %d\n", pkt_id);
+
+        if (pkt_id % 1000 == 0) {
+            printf("%f Percent...\n", (float) curr_dpkt * 100/ (float) num_dpkt);
+        }
         if (pkt_id < curr_dpkt) {
             continue;
         }
 
         /* copy into buffer and mark current packet TODO make smarter, keep track of recieved*/
-        memcpy(fbuf + FRAME_SIZE*pkt_id, rec.data + 2, FRAME_SIZE);
-        if (pkt_id == curr_dpkt) {
-            curr_dpkt++;
+        if (pkt_arr[pkt_id] == 0) {
+            memcpy(fbuf + FRAME_SIZE*pkt_id, rec.data + 2, FRAME_SIZE);
+            pkt_arr[pkt_id] = 1;
         }
+        cnt = 0;
+        while(pkt_arr[cnt] != 0){
+            cnt++;
+        }
+        curr_dpkt = cnt;
+        //if (pkt_id == curr_dpkt) {
+        //    curr_dpkt++;
+        //}
 
         if (curr_dpkt == num_dpkt) {
+            free(pkt_arr);
             break;
         }
     }
@@ -180,6 +205,7 @@ void get(char *file) {
         }
 
         if (rec.oper == OPER_GET && rec.func == GET_DONE) {
+            printf("%f Percent...\n", 100.0);
             printf("Completed get operation\n");
             break;
         }
@@ -533,10 +559,10 @@ int main(int argc, char **argv) {
         error("Error initializing socket\n");
     }
 
-    /* Set socket recieve timeout (200ms) */
+    /* Set socket recieve timeout (50ms) */
     struct timeval tv;
     tv.tv_sec = 0;
-    tv.tv_usec = 200000;
+    tv.tv_usec = 50000;
     if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
         error("Error setting socket timeout");
     }
