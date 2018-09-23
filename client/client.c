@@ -72,7 +72,7 @@ void get(char *file) {
     int curr_dpkt = 0;
     int pkt_id = 0;
     int num_dpkt = 0;
-
+	
     /* Create init packet */
     init.oper = OPER_GET;
     init.func = GET_INIT;
@@ -121,7 +121,6 @@ void get(char *file) {
     /* Data gathering loop */
     while(1) {
         /* Request packet */
-        printf("Requesting pkt %d\n", curr_dpkt);
         d.data[0] = curr_dpkt >> 8;
         d.data[1] = curr_dpkt >> 0;
         ret = sendto(sock, &d, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, serv_len);
@@ -158,8 +157,6 @@ void get(char *file) {
             break;
         }
     }
-
-    printf("data is %s\n", fbuf);
 
     /* Save file */
     f = fopen(file, "wb");
@@ -275,14 +272,11 @@ void put(char *file) {
     while(1) {
 
         /* Send packets and wait for server status */
-        for (int i = curr_dpkt; i < curr_dpkt + 2; i++) {
-            printf("i is %d\n", i);
+        for (int i = curr_dpkt; i < curr_dpkt + 1; i++) {
             if (i < num_dpkt) {
                 d.data[0] = i >> 8;
                 d.data[1] = i >> 0;
-                printf("d0, d1 are %d, %d\n", d.data[0], d.data[1]);
                 memcpy(d.data + 2, fbuf + FRAME_SIZE*i, FRAME_SIZE);
-                printf("Sending packet with id %d, curr_dpkt is %d, num_dpkt is  %d\n", i, curr_dpkt, num_dpkt);
                 ret = sendto(sock, &d, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, sizeof(serv_addr));
                 if (ret < 0) {
                     warn("Data response failure in PUT");
@@ -314,7 +308,6 @@ void put(char *file) {
         /* Server needs a packet */
         if (pkt_id < num_dpkt) {
             curr_dpkt = pkt_id;
-            printf("Set curr_dpkt to %d\n", curr_dpkt);
         } 
     }
 

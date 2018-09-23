@@ -92,7 +92,7 @@ void get(msg_t *rec) {
 
         /* Send init response  with file size */
         if (rec->oper == OPER_GET  && rec->func == GET_INIT) {
-            printf("Filename is %s\n",rec->data+4);
+            printf("Filename is %s\n",rec->data);
 
             /* Open file buffer */
             f = fopen(rec->data, "r");
@@ -140,10 +140,10 @@ void get(msg_t *rec) {
         /* Request for missing packet */
         if (rec->oper == OPER_GET  && rec->func == GET_DATA) {
             curr_dpkt = rec->data[0] << 8 | rec->data[1] << 0;
-            printf("packet is %d\n", curr_dpkt);
+            printf("Pkt ID is %d\n", curr_dpkt);
 
             /* Send next ten packets */
-            for (int i = curr_dpkt; i < curr_dpkt + 10; i++) {
+            for (int i = curr_dpkt; i < curr_dpkt + 1; i++) {
                 if (i < num_dpkt) {
                     d.data[0] = i >> 8;
                     d.data[1] = i >> 0;
@@ -270,7 +270,6 @@ void put(msg_t *rec) {
             /* Send request packet for curr_dpkt */
             d.data[0] = curr_dpkt >> 8;
             d.data[1] = curr_dpkt >> 0;
-            printf("Need packet %d\n", curr_dpkt);
             ret = sendto(sock, &d, MSG_SIZE, 0, (struct sockaddr *) &client_addr, sizeof(client_addr));
             if (ret < 0) {
                 warn("Data request failure in PUT");
