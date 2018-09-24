@@ -91,6 +91,14 @@ void get(char *file) {
     done.func = GET_DONE;
     done.data[0] = 0;
 
+    /* Clear input from last operation */
+    while(1) {
+        ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
+        if (ret < 0) {
+            break;
+        }
+    }
+
     /* Send init packet and wait for response */
     while (1) {
         serv_len = sizeof(serv_addr);
@@ -105,9 +113,20 @@ void get(char *file) {
             continue;
         }
 
+        if (rec.oper != OPER_GET || rec.func != GET_INIT) {
+            continue;
+        }
+
         file_len =  (int) (rec.data[0] << 24 | rec.data[1] << 16 |
                               rec.data[2] << 8  | rec.data[3] << 0);
         printf("File length is %d\n", file_len);
+
+        if (file_len == 0) {
+            printf("Bad filename\n");
+            return;
+        }
+
+        printf("Initializing\n");
         break;
     }
 
@@ -119,6 +138,7 @@ void get(char *file) {
 
     /* Calculate total number of packets */
     num_dpkt = (file_len + (FRAME_SIZE - 1)) / FRAME_SIZE;    
+    curr_dpkt = 0;
 
     /* Array to keep track of packets */
     pkt_arr = calloc(num_dpkt+1, sizeof(char));
@@ -148,15 +168,17 @@ void get(char *file) {
         }
 
         if (rec.oper != OPER_GET || rec.func != GET_DATA) {
-            printf("Recieved invalid packet\n");
+            //printf("Recieved invalid packet\n");
+            //printf("Operation %d, function %d\n", rec.oper, rec.func);
             continue;
+
         }
 
         /* Decode packet ID */
         pkt_id = rec.data[0] << 8 | rec.data[1] << 0;
         //printf("Pkt ID is %d\n", pkt_id);
 
-        if (pkt_id % 1000 == 0) {
+        if (pkt_id % 10000 == 0) {
             printf("%f Percent...\n", (float) curr_dpkt * 100/ (float) num_dpkt);
         }
         if (pkt_id < curr_dpkt) {
@@ -298,7 +320,7 @@ void put(char *file) {
     while(1) {
 
         /* Send packets and wait for server status */
-        for (int i = curr_dpkt; i < curr_dpkt + 1; i++) {
+        for (int i = curr_dpkt; i < curr_dpkt + 5000; i++) {
             if (i < num_dpkt) {
                 d.data[0] = i >> 8;
                 d.data[1] = i >> 0;
@@ -313,18 +335,20 @@ void put(char *file) {
         /* Try to receieve a packet and set current packet or send done*/
         ret = recvfrom(sock, &rec, MSG_SIZE, 0, (struct sockaddr *) &serv_addr, &serv_len);
         if (ret < 0) {
-            warn("No data packet from server");
+            //warn("No data packet from server");
             continue;
         }
 
         if  (rec.oper != OPER_PUT || rec.func != PUT_DATA) {
-            printf("Received invalid packet\n");
+            //printf("Received invalid packet\n");
+            //printf("Operation %d, function %d\n", rec.oper, rec.func);
             continue;
         }
 
         /* Decode packet ID */
         pkt_id = rec.data[0] << 8 | rec.data[1] << 0;
-        printf("Pkt ID is %d\n", pkt_id);
+        //printf("Pkt ID is %d\n", pkt_id);
+        printf("%f Percent...\n", (float) pkt_id * 100 / (float) num_dpkt);
     
         /* Server has all packets */
         if (pkt_id >= num_dpkt) {
@@ -559,7 +583,7 @@ int main(int argc, char **argv) {
         error("Error initializing socket\n");
     }
 
-    /* Set socket recieve timeout (50ms) */
+    /* Set socket recieve timeout (200ms) */
     struct timeval tv;
     tv.tv_sec = 0;
     tv.tv_usec = 50000;
